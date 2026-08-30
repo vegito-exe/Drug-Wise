@@ -1,0 +1,209 @@
+// Pharma-Sabrina database schema
+// Better Auth models (User/Account/Session/Verification) + PRD §7 domain models
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── Auth (Better Auth) ────────────────────────────────────────────────
+
+enum Role {
+  STUDENT
+  ADMIN
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  role          Role      @default(STUDENT)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts  Account[]
+  sessions  Session[]
+  questions Question[]
+
+  @@map("users")
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  userId                String
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verifications")
+}
+
+// ── Domain (PRD §7) ───────────────────────────────────────────────────
+
+model Year {
+  id               Int      @id @default(autoincrement())
+  number           Int      @unique
+  labelFr          String
+  labelAr          String
+  totalCoefficient Int      @default(0)
+  createdAt        DateTime @default(now())
+
+  modules  Module[]
+  rotations Rotation[]
+
+  @@map("years")
+}
+
+model Module {
+  id          String  @id @default(cuid())
+  yearId      Int
+  nameFr      String
+  nameAr      String
+  icon        String  @default("pill")
+  coefficient Int     @default(1)
+  order       Int     @default(0)
+  createdAt   DateTime @default(now())
+
+  year         Year          @relation(fields: [yearId], references: [id], onDelete: Cascade)
+  contentItems ContentItem[]
+  questions    Question[]
+
+  @@index([yearId])
+  @@map("modules")
+}
+
+// ── Year 6 internship rotations (PRD §8) ──────────────────────────────
+
+model Rotation {
+  id            String   @id @default(cuid())
+  yearId        Int
+  nameFr        String
+  nameAr        String
+  disciplinesFr String
+  disciplinesAr String
+  icon          String   @default("stethoscope")
+  order         Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  year Year @relation(fields: [yearId], references: [id], onDelete: Cascade)
+
+  @@index([yearId])
+  @@map("rotations")
+}
+
+enum ContentType {
+  summary
+  quiz
+}
+
+model ContentItem {
+  id           String      @id @default(cuid())
+  moduleId     String
+  type         ContentType
+  titleFr      String
+  titleAr      String
+  description  String?
+  fileUrl      String?     // external download link provided by admin
+  fileKey      String?     // legacy storage object key (pre-link content)
+  fileName     String
+  fileSize     Int         @default(0) // bytes
+  createdAt    DateTime    @default(now())
+
+  module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@index([moduleId])
+  @@index([type])
+  @@map("content_items")
+}
+
+enum QuestionStatus {
+  pending
+  answered
+}
+
+model Question {
+  id           String         @id @default(cuid())
+  studentId    String
+  moduleId     String?
+  questionText String
+  answerText   String?
+  status       QuestionStatus @default(pending)
+  createdAt    DateTime       @default(now())
+  answeredAt   DateTime?
+
+  student   User      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  module    Module?   @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+  faqEntry  FAQEntry?
+
+  @@index([studentId])
+  @@index([status])
+  @@map("questions")
+}
+
+enum FAQCategory {
+  CLINICAL_PRACTICE
+  PHARMACOLOGY
+  CALCULATIONS
+  PLATFORM_SUPPORT
+}
+
+model FAQEntry {
+  id               String    @id @default(cuid())
+  questionFr       String
+  questionAr       String
+  answerFr         String
+  answerAr         String
+  category         FAQCategory?
+  sourceQuestionId String?   @unique
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  sourceQuestion Question? @relation(fields: [sourceQuestionId], references: [id], onDelete: SetNull)
+
+  @@map("faq_entries")
+}
